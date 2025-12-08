@@ -48,6 +48,3 @@ bash Store_{data_name}.sh
 ```bash
 bash {data_name}.sh
 ```
-
-## Contact Us
-For inquiries or further assistance, contact us at [chenxi.liu@ntu.edu.sg](mailto:chenxi.liu@ntu.edu.sg).
