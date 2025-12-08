@@ -2,7 +2,7 @@
   <h2><b> (AAAI'25) TimeCMA: Towards LLM-Empowered Multivariate Time Series Forecasting via Cross-Modality Alignment </b></h2>
 </div>
 
-This repository contains the code for our AAAI 2025 [paper](https://arxiv.org/abs/2406.01638), where we porpose an intuitive yet effective framework for MTSF via cross-modality alignment.
+This repository contains the code for our AAAI 2025 [paper](https://arxiv.org/abs/2406.01638), where we propose an intuitive yet effective framework for MTSF via cross-modality alignment.
 
 > If you find our work useful in your research. Please consider giving a star ⭐ and citation 📚:
 
