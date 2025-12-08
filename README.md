@@ -7,7 +7,7 @@ This repository contains the code for our AAAI 2025 [paper](https://arxiv.org/ab
 > If you find our work useful in your research. Please consider giving a star ⭐ and citation 📚:
 
 ```bibtex
-@inproceedings{liu2024timecma,
+@inproceedings{liu2025timecma,
   title={{TimeCMA}: Towards LLM-Empowered Multivariate Time Series Forecasting via Cross-Modality Alignment},
   author={Liu, Chenxi and Xu, Qianxiong and Miao, Hao and Yang, Sun and Zhang, Lingzheng and Long, Cheng and Li, Ziyue and Zhao, Rui},
   booktitle={AAAI},
