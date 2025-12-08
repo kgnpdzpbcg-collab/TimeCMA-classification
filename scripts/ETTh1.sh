@@ -24,7 +24,7 @@ nohup python train.py \
   --num_nodes 7 \
   --seq_len $seq_len \
   --pred_len 96 \
-  --epochs 100 \
+  --epochs 999 \
   --seed 2024 \
   --channel $channel \
   --learning_rate $learning_rate \
@@ -47,7 +47,7 @@ nohup python train.py \
   --num_nodes 7 \
   --seq_len $seq_len \
   --pred_len $pred_len \
-  --epochs 100 \
+  --epochs 999 \
   --seed 2024 \
   --channel $channel \
   --learning_rate $learning_rate \
@@ -70,7 +70,7 @@ nohup python train.py \
   --num_nodes 7 \
   --seq_len $seq_len \
   --pred_len $pred_len \
-  --epochs 120 \
+  --epochs 999 \
   --seed 2024 \
   --channel $channel \
   --learning_rate $learning_rate \
@@ -93,7 +93,7 @@ nohup python train.py \
   --num_nodes 7 \
   --seq_len $seq_len \
   --pred_len $pred_len \
-  --epochs 100 \
+  --epochs 999 \
   --seed 2024 \
   --channel $channel \
   --head 8 \
