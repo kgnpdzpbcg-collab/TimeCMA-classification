@@ -9,7 +9,7 @@ batch_size=16
 
 # pred_len = 24
 pred_len=24
-learning_rate=1e-4
+learning_rate=5e-5
 channel=16
 e_layer=1
 d_layer=1
