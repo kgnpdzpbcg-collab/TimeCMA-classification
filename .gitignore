@@ -1,0 +1,5 @@
+# 项目独立 uv 虚拟环境与 Python 运行缓存不纳入版本控制。
+/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]

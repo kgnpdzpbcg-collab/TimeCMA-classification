@@ -48,3 +48,41 @@ bash Store_{data_name}.sh
 ```bash
 bash {data_name}.sh
 ```
+
+## CWRU Fault Diagnosis
+
+该分支保留 TimeCMA 的 Time-Series Encoder、冻结 GPT-2 prompt branch 与 Cross-Modality
+Alignment（CMA），并将 forecasting decoder 替换为四类故障分类头：normal、ball、inner、outer。
+原 forecasting 代码和脚本不受影响。
+
+### 1. 创建独立 uv 环境
+
+```powershell
+uv sync
+```
+
+本机没有 CUDA 时会使用 CPU PyTorch；这只影响运行速度，不改变模型逻辑。
+
+### 2. 缓存冻结 GPT-2 embedding
+
+```powershell
+uv run python -m storage.store_phm_embeddings `
+  --data-root 'D:\project\公开数据集\a8c15-main\CWRU轴承数据\cwru_data' `
+  --embedding-root Embeddings\CWRU `
+  --window-size 1024 --stride 1024
+```
+
+Prompt 仅由信号窗口统计量、采样率和已知负载工况构成，不包含故障标签或故障尺寸；完整
+波形不会直接写入文本，以避免 GPT-2 上下文截断。GPT-2 只在本步骤运行一次，训练阶段读取
+缓存的 last-token embedding。
+
+### 3. 训练和测试
+
+```powershell
+uv run python train_fd.py `
+  --data-root 'D:\project\公开数据集\a8c15-main\CWRU轴承数据\cwru_data' `
+  --embedding-root Embeddings\CWRU
+```
+
+数据在原始 MAT 文件粒度切分，防止同一记录的不同窗口跨训练、验证、测试集合泄漏。模型仅以
+验证集 Macro-F1 保存最佳 checkpoint，测试集只在训练结束后评估一次。

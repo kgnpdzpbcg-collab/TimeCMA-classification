@@ -1,0 +1,22 @@
+[project]
+name = "timecma-classification"
+version = "0.1.0"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "einops",
+    "h5py",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "scipy",
+    "torch",
+    "transformers",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
