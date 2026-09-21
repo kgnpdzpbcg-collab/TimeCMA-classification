@@ -3,3 +3,7 @@
 __pycache__/
 **/__pycache__/
 *.py[cod]
+
+# 预计算 embedding、checkpoint 和训练指标属于本地实验产物，体积大且可由脚本复现。
+/Embeddings/
+/Results/

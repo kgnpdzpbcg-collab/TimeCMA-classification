@@ -19,6 +19,9 @@ class PHMPromptEmbedder(nn.Module):
         self.device = torch.device(device)
         self.sampling_rate = sampling_rate
         self.tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+        # GPT-2 原生没有 padding token；用 EOS 仅作为右侧填充，并由 attention_mask 屏蔽。
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = "right"
         self.model = GPT2Model.from_pretrained(model_name).to(self.device)
         # 冻结且 eval，确保缓存可复现，并禁止 dropout 让同一窗口产生不同 embedding。
         self.model.eval()
@@ -64,14 +67,27 @@ class PHMPromptEmbedder(nn.Module):
         if signals.ndim != 3:
             raise ValueError(f"signals 应为 [B,L,N]，实际为 {tuple(signals.shape)}")
         batch_size, _, num_nodes = signals.shape
-        outputs: list[torch.Tensor] = []
+        prompts: list[tuple[int, int, str]] = []
         for batch_index in range(batch_size):
-            channel_embeddings: list[torch.Tensor] = []
             for channel_index in range(num_nodes):
                 prompt = self._build_prompt(signals[batch_index, :, channel_index], int(loads_hp[batch_index]))
-                encoded = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=self.model.config.n_positions)
-                encoded = {name: value.to(self.device) for name, value in encoded.items()}
-                last_token = self.model(**encoded).last_hidden_state[:, -1, :].squeeze(0)
-                channel_embeddings.append(last_token)
-            outputs.append(torch.stack(channel_embeddings, dim=1))  # [E,N]
-        return torch.stack(outputs, dim=0).unsqueeze(-1)  # [B,E,N,1]
+                prompts.append((batch_index, channel_index, prompt))
+
+        # 过去逐 prompt 调用 GPT-2 会让 CPU 预计算耗时极长；这里保持相同 prompt，
+        # 仅将不同长度文本右侧补齐后合成一个 batch，并用 attention_mask 排除补齐 token。
+        encoded = self.tokenizer(
+            [prompt for _, _, prompt in prompts],
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=self.model.config.n_positions,
+        )
+        encoded = {name: value.to(self.device) for name, value in encoded.items()}
+        hidden_states = self.model(**encoded).last_hidden_state
+        last_positions = encoded["attention_mask"].sum(dim=1).sub(1)
+        last_tokens = hidden_states[torch.arange(hidden_states.size(0), device=self.device), last_positions]
+
+        output = torch.empty(batch_size, hidden_states.size(-1), num_nodes, device=self.device)
+        for prompt_index, (batch_index, channel_index, _prompt) in enumerate(prompts):
+            output[batch_index, :, channel_index] = last_tokens[prompt_index]
+        return output.unsqueeze(-1)  # [B,E,N,1]
