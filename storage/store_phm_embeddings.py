@@ -8,6 +8,7 @@ from pathlib import Path
 import h5py
 import torch
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from data_provider.cwru_dataset import CWRUDataset
 from utils.phm_prompt import PHMPromptEmbedder
@@ -38,10 +39,15 @@ def main():
         output_dir = args.embedding_root / split
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        for signals, _labels, loads, sample_ids in loader:
+        created = 0
+        skipped = 0
+        progress = tqdm(loader, desc=f"Embedding {split}", unit="batch", dynamic_ncols=True)
+        for signals, _labels, loads, sample_ids in progress:
             destinations = [output_dir / f"{sid}.h5" for sid in sample_ids]
             needed = [i for i, p in enumerate(destinations) if args.overwrite or not p.exists()]
             if not needed:
+                skipped += len(sample_ids)
+                progress.set_postfix(created=created, skipped=skipped)
                 continue
             idx = torch.tensor(needed)
             embeddings = embedder.patch_forward(
@@ -53,8 +59,11 @@ def main():
                 with h5py.File(destinations[source_i], "w") as f:
                     f.create_dataset("embedding", data=embeddings[local_i], compression="gzip")
                     f.attrs["version"] = "V2_patch_prompt_alignment"
+            created += len(needed)
+            skipped += len(sample_ids) - len(needed)
+            progress.set_postfix(created=created, skipped=skipped)
 
-        print(f"{split}: cached {len(dataset)} samples")
+        print(f"{split}: 共 {len(dataset)} 个窗口，本次新生成 {created} 个，跳过已有缓存 {skipped} 个")
 
 
 if __name__ == "__main__":

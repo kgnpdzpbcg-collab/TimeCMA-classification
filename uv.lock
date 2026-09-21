@@ -624,6 +624,7 @@ dependencies = [
     { name = "scipy" },
     { name = "torch", version = "2.14.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "tqdm" },
     { name = "transformers" },
 ]
 
@@ -636,6 +637,7 @@ requires-dist = [
     { name = "pandas" },
     { name = "scipy" },
     { name = "torch", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "tqdm", specifier = ">=4.70.1" },
     { name = "transformers" },
 ]
 

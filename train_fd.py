@@ -15,6 +15,7 @@ import torch
 from torch import nn
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from data_provider.cwru_dataset import CWRUDataset
 from models.TimeCMA_FD import TimeCMAFaultDiagnosis
@@ -52,18 +53,21 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def evaluate(model: nn.Module, loader: DataLoader, criterion: nn.Module, device: torch.device, num_classes: int):
+def evaluate(model: nn.Module, loader: DataLoader, criterion: nn.Module, device: torch.device, num_classes: int, desc: str):
     """汇总整个数据集后再计算 Macro-F1，避免按 batch 平均造成统计偏差。"""
     model.eval()
     losses: list[float] = []
     all_predictions: list[torch.Tensor] = []
     all_targets: list[torch.Tensor] = []
     with torch.inference_mode():
-        for signals, labels, embeddings in loader:
+        progress = tqdm(loader, desc=desc, unit="batch", leave=False, dynamic_ncols=True)
+        for signals, labels, embeddings in progress:
             logits = model(signals.to(device), embeddings.to(device))
-            losses.append(criterion(logits, labels.to(device)).item())
+            batch_loss = criterion(logits, labels.to(device)).item()
+            losses.append(batch_loss)
             all_predictions.append(logits.argmax(dim=1).cpu())
             all_targets.append(labels.cpu())
+            progress.set_postfix(loss=f"{batch_loss:.4f}")
     metrics = classification_metrics(torch.cat(all_predictions), torch.cat(all_targets), num_classes)
     metrics["loss"] = float(np.mean(losses))
     return metrics
@@ -96,7 +100,8 @@ def main() -> None:
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_losses: list[float] = []
-        for signals, labels, embeddings in loaders["train"]:
+        progress = tqdm(loaders["train"], desc=f"Epoch {epoch}/{args.epochs}", unit="batch", dynamic_ncols=True)
+        for signals, labels, embeddings in progress:
             optimizer.zero_grad(set_to_none=True)
             logits = model(signals.to(device), embeddings.to(device))
             loss = criterion(logits, labels.to(device))
@@ -104,9 +109,10 @@ def main() -> None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
             train_losses.append(loss.item())
+            progress.set_postfix(loss=f"{loss.item():.4f}", lr=f"{optimizer.param_groups[0]['lr']:.2e}")
         scheduler.step()
 
-        val_metrics = evaluate(model, loaders["val"], criterion, device, datasets["val"].num_classes)
+        val_metrics = evaluate(model, loaders["val"], criterion, device, datasets["val"].num_classes, desc=f"Validation {epoch}/{args.epochs}")
         row = {"epoch": epoch, "train_loss": float(np.mean(train_losses)), **val_metrics}
         history.append(row)
         print(f"epoch={epoch:03d} train_loss={row['train_loss']:.4f} val_f1={row['macro_f1']:.4f} val_acc={row['accuracy']:.4f}")
@@ -121,7 +127,7 @@ def main() -> None:
 
     checkpoint = torch.load(args.output_dir / "best_model.pt", map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state"])
-    test_metrics = evaluate(model, loaders["test"], criterion, device, datasets["test"].num_classes)
+    test_metrics = evaluate(model, loaders["test"], criterion, device, datasets["test"].num_classes, desc="Final test")
     report = {"best_epoch": checkpoint["epoch"], "best_val_metrics": checkpoint["val_metrics"], "test_metrics": test_metrics, "history": history}
     with (args.output_dir / "metrics.json").open("w", encoding="utf-8") as file:
         json.dump(report, file, ensure_ascii=False, indent=2)

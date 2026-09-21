@@ -10,6 +10,7 @@ dependencies = [
     "pandas",
     "scipy",
     "torch",
+    "tqdm>=4.70.1",
     "transformers",
 ]
 
