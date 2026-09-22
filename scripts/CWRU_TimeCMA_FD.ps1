@@ -2,8 +2,8 @@
 # 先生成或迁移 split 无关缓存；随后仅替换 $manifest 与 $outputDir 即可切换 LOLO fold。
 $dataRoot = 'D:\project\公开数据集\a8c15-main\CWRU轴承数据\cwru_data'
 $manifest = 'splits\cwru\lolo_load_v1\test_3hp_val_0hp.json'
-$embeddingRoot = 'Embeddings\CWRU_v4_de_fe\prompt-v1-with-load'
-$outputDir = 'Results\CWRU_TimeCMA_FD\lolo_load_v1\test_3hp_val_0hp'
+$embeddingRoot = 'Embeddings\CWRU_v6_prompt\evidence-mechanism-with-load'
+$outputDir = 'Results\CWRU_TimeCMA_FD\v6_prompt_lolo_load_v1\test_3hp_val_0hp'
 
 # 仅在目标缓存不存在时运行；该命令生成全部 5927 个窗口，路径不含 train/val/test。
 uv run python -m storage.store_phm_embeddings `
