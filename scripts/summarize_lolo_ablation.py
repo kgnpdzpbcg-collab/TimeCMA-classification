@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--result-root",
         type=Path,
-        default=Path("Results/CWRU_TimeCMA_FD/lolo_load_v1"),
+        default=Path("Results/CWRU_TimeCMA_FD/v6_prompt_lolo_load_v1"),
         help="含 <mode>/seed_<N>/<fold>/metrics.json 的结果根目录",
     )
     parser.add_argument("--seeds", type=int, nargs="+", default=[2024, 2025, 2026], help="参与聚合的种子")
@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("Results/CWRU_TimeCMA_FD/lolo_load_v1/summary.md"),
+        default=Path("Results/CWRU_TimeCMA_FD/v6_prompt_lolo_load_v1/summary.md"),
         help="输出 Markdown 报告路径",
     )
     parser.add_argument(
