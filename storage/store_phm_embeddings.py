@@ -1,4 +1,4 @@
-"""按样本生成 split 无关的 V4 DE/FE 冻结 GPT-2 embedding。
+"""按样本生成 split 无关的 V6 DE/FE 证据型 Prompt 冻结 GPT-2 embedding。
 
 本脚本总是枚举全部 CWRU 窗口；Train/Val/Test 的归属由训练阶段的 manifest 决定，
 不会影响 embedding 的路径或内容。不同 prompt 配方必须使用不同 embedding-root。
@@ -24,7 +24,7 @@ from utils.phm_prompt import PHMPromptEmbedder
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="生成 split 无关的 CWRU DE/FE prompt embedding")
+    parser = argparse.ArgumentParser(description="生成 split 无关的 CWRU DE/FE V6 evidence+mechanism Prompt embedding")
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--embedding-root", type=Path, required=True)
     parser.add_argument("--model-name", default="gpt2")
