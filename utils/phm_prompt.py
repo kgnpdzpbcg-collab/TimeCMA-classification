@@ -230,7 +230,7 @@ class PHMPromptEmbedder(nn.Module):
                 f"DE-FE waveform correlation {global_cross['correlation']:.6g}. "
             )
             + BEARING_MECHANISM_KNOWLEDGE
-            + ". "
+            + " "
         )
 
     @torch.inference_mode()
