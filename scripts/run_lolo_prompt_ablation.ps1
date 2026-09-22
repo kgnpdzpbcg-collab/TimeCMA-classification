@@ -7,7 +7,7 @@
 
 结果布局把 seed 放进路径，避免多种子互相覆盖：
 
-    Results\CWRU_TimeCMA_FD\lolo_load_v1\<mode>\seed_<N>\<fold>\
+    Results\CWRU_TimeCMA_FD\v6_prompt_lolo_load_v1\<mode>\seed_<N>\<fold>\
 
 示例（从项目根目录执行）：
     .\scripts\run_lolo_prompt_ablation.ps1 -Mode dual -Seeds 2025,2026
@@ -26,7 +26,7 @@ param(
 
     # 固定 LOLO 已使用的数据源和缓存，避免消融额外改变输入分布。
     [string]$DataRoot = 'D:\project\公开数据集\a8c15-main\CWRU轴承数据\cwru_data',
-    [string]$EmbeddingRoot = 'Embeddings\CWRU_v4_de_fe\prompt-v1-with-load',
+    [string]$EmbeddingRoot = 'Embeddings\CWRU_v6_prompt\evidence-mechanism-with-load',
     [string]$ResultRoot = 'Results\CWRU_TimeCMA_FD\lolo_load_v1',
 
     # 已存在 metrics.json 时跳过，用于中断后续跑而不重算已完成的单元。
