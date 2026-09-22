@@ -45,6 +45,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--encoder-layers", type=int, default=2)
     parser.add_argument("--heads", type=int, default=8)
     parser.add_argument("--dropout", type=float, default=0.2)
+    parser.add_argument(
+        "--ablation",
+        choices=("dual", "signal_only", "prompt_only"),
+        default="dual",
+        help="模型输入消融模式；dual 保持 V4 原始双模态结构",
+    )
     parser.add_argument("--seed", type=int, default=2024)
     return parser.parse_args()
 
@@ -58,7 +64,28 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def evaluate(model: nn.Module, loader: DataLoader, criterion: nn.Module, device: torch.device, num_classes: int, desc: str):
+def unpack_batch(batch, ablation: str):
+    """统一单模态与双模态 DataLoader 的返回结构。
+
+    Signal-only 数据集不传入 embedding_root，因此返回信号、标签和仅用于追溯的
+    负载/样本 ID；该模式不会打开任何逐样本 prompt H5。其余模式仍返回三元组。
+    """
+    if ablation == "signal_only":
+        signals, labels, _loads, _sample_ids = batch
+        return signals, labels, None
+    signals, labels, embeddings = batch
+    return signals, labels, embeddings
+
+
+def evaluate(
+    model: nn.Module,
+    loader: DataLoader,
+    criterion: nn.Module,
+    device: torch.device,
+    num_classes: int,
+    desc: str,
+    ablation: str,
+):
     """汇总整个数据集后再计算 Macro-F1，避免按 batch 平均造成统计偏差。"""
     model.eval()
     losses: list[float] = []
@@ -66,8 +93,10 @@ def evaluate(model: nn.Module, loader: DataLoader, criterion: nn.Module, device:
     all_targets: list[torch.Tensor] = []
     with torch.inference_mode():
         progress = tqdm(loader, desc=desc, unit="batch", leave=False, dynamic_ncols=True)
-        for signals, labels, embeddings in progress:
-            logits = model(signals.to(device), embeddings.to(device))
+        for batch in progress:
+            signals, labels, embeddings = unpack_batch(batch, ablation)
+            prompt_inputs = embeddings.to(device) if embeddings is not None else None
+            logits = model(signals.to(device), prompt_inputs)
             batch_loss = criterion(logits, labels.to(device)).item()
             losses.append(batch_loss)
             all_predictions.append(logits.argmax(dim=1).cpu())
@@ -96,7 +125,9 @@ def main() -> None:
     datasets = {
         split: CWRUDataset(
             args.data_root, split, args.window_size, args.stride,
-            manifest_path=args.split_manifest, embedding_root=args.embedding_root,
+            # Signal-only 仅使用波形，禁止为它加载逐样本 prompt；其余模式使用同一缓存。
+            manifest_path=args.split_manifest,
+            embedding_root=None if args.ablation == "signal_only" else args.embedding_root,
         )
         for split in ("train", "val", "test")
     }
@@ -109,7 +140,7 @@ def main() -> None:
         num_nodes=len(cache_spec["sensors"]), seq_len=args.window_size, num_classes=datasets["train"].num_classes,
         patch_len=args.patch_len, patch_stride=args.patch_stride,
         channel=args.channel, d_llm=args.d_llm, align_dim=args.align_dim,
-        e_layer=args.encoder_layers, head=args.heads, dropout=args.dropout,
+        e_layer=args.encoder_layers, head=args.heads, dropout=args.dropout, ablation=args.ablation,
     ).to(device)
     optimizer = AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
@@ -122,9 +153,11 @@ def main() -> None:
         model.train()
         train_losses: list[float] = []
         progress = tqdm(loaders["train"], desc=f"Epoch {epoch}/{args.epochs}", unit="batch", dynamic_ncols=True)
-        for signals, labels, embeddings in progress:
+        for batch in progress:
+            signals, labels, embeddings = unpack_batch(batch, args.ablation)
+            prompt_inputs = embeddings.to(device) if embeddings is not None else None
             optimizer.zero_grad(set_to_none=True)
-            logits = model(signals.to(device), embeddings.to(device))
+            logits = model(signals.to(device), prompt_inputs)
             loss = criterion(logits, labels.to(device))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
@@ -133,7 +166,10 @@ def main() -> None:
             progress.set_postfix(loss=f"{loss.item():.4f}", lr=f"{optimizer.param_groups[0]['lr']:.2e}")
         scheduler.step()
 
-        val_metrics = evaluate(model, loaders["val"], criterion, device, datasets["val"].num_classes, desc=f"Validation {epoch}/{args.epochs}")
+        val_metrics = evaluate(
+            model, loaders["val"], criterion, device, datasets["val"].num_classes,
+            desc=f"Validation {epoch}/{args.epochs}", ablation=args.ablation,
+        )
         row = {"epoch": epoch, "train_loss": float(np.mean(train_losses)), **val_metrics}
         history.append(row)
         print(f"epoch={epoch:03d} train_loss={row['train_loss']:.4f} val_f1={row['macro_f1']:.4f} val_acc={row['accuracy']:.4f}")
@@ -152,8 +188,13 @@ def main() -> None:
 
     checkpoint = torch.load(args.output_dir / "best_model.pt", map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state"])
-    test_metrics = evaluate(model, loaders["test"], criterion, device, datasets["test"].num_classes, desc="Final test")
+    test_metrics = evaluate(
+        model, loaders["test"], criterion, device, datasets["test"].num_classes,
+        desc="Final test", ablation=args.ablation,
+    )
     report = {
+        # 显式保存模式，防止后续汇总时把单模态结果误当成原始 V4 双模态结果。
+        "ablation": args.ablation,
         "best_epoch": checkpoint["epoch"], "best_val_metrics": checkpoint["val_metrics"],
         "test_metrics": test_metrics, "history": history,
         "split_manifest": str(args.split_manifest.resolve()),
