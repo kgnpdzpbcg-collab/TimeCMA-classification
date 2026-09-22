@@ -28,6 +28,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--embedding-root", type=Path, required=True)
     parser.add_argument("--model-name", default="gpt2")
+    parser.add_argument(
+        "--model-source",
+        default=None,
+        help=(
+            "实际加载 GPT-2 的本地目录。默认与 --model-name 相同；离线服务器可保持 "
+            "--model-name gpt2 以复用既有缓存配方，同时在这里传入模型文件路径。"
+        ),
+    )
     parser.add_argument("--window-size", type=int, default=1024)
     parser.add_argument("--stride", type=int, default=1024)
     parser.add_argument("--patch-len", type=int, default=256)
@@ -56,7 +64,9 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    embedder = PHMPromptEmbedder(args.model_name, device=device, sampling_rate=args.sampling_rate)
+    # 缓存配方使用逻辑名称 args.model_name；模型可从离线目录读取，避免因绝对路径不同破坏缓存复用。
+    model_source = args.model_source or args.model_name
+    embedder = PHMPromptEmbedder(model_source, device=device, sampling_rate=args.sampling_rate)
     # split='all' 明确枚举 40 个 MAT 的所有窗口；不接收随机 seed 或 split manifest。
     dataset = CWRUDataset(args.data_root, "all", args.window_size, args.stride)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
