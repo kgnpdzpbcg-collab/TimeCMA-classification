@@ -25,8 +25,8 @@ from utils.metrics import classification_metrics
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="使用 TimeCMA CMA 进行 CWRU 故障分类")
     parser.add_argument("--data-root", type=Path, required=True)
-    parser.add_argument("--embedding-root", type=Path, default=Path("Embeddings/CWRU_v3a_patch256_stride128"))
-    parser.add_argument("--output-dir", type=Path, default=Path("Results/CWRU_TimeCMA_FD/v3ab_overlap_true_cross_attention"))
+    parser.add_argument("--embedding-root", type=Path, default=Path("Embeddings/CWRU_v4_de_fe_patch256_stride128"))
+    parser.add_argument("--output-dir", type=Path, default=Path("Results/CWRU_TimeCMA_FD/v4_de_fe_overlap_true_cross_attention"))
     parser.add_argument("--window-size", type=int, default=1024)
     parser.add_argument("--stride", type=int, default=1024)
     parser.add_argument("--patch-len", type=int, default=256)
@@ -90,7 +90,7 @@ def main() -> None:
         "test": DataLoader(datasets["test"], args.batch_size, shuffle=False, num_workers=args.num_workers),
     }
     model = TimeCMAFaultDiagnosis(
-        num_nodes=1, seq_len=args.window_size, num_classes=datasets["train"].num_classes,
+        num_nodes=2, seq_len=args.window_size, num_classes=datasets["train"].num_classes,
         patch_len=args.patch_len, patch_stride=args.patch_stride,
         channel=args.channel, d_llm=args.d_llm, align_dim=args.align_dim,
         e_layer=args.encoder_layers, head=args.heads, dropout=args.dropout,

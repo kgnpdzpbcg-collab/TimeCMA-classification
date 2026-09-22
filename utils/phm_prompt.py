@@ -39,13 +39,24 @@ class PHMPromptEmbedder(nn.Module):
         }
 
     def _build_prompt(self, patch, load_hp):
-        s = self._statistics(patch, self.sampling_rate)
+        """将一个同步 DE/FE 局部片段转为文本，不输入故障类别标签。"""
+        if patch.ndim != 2 or patch.shape[1] != 2:
+            raise ValueError(f"V4 prompt patch 必须为 [长度, 2] 的 DE/FE 数据，实际为 {tuple(patch.shape)}")
+        de_stats = self._statistics(patch[:, 0], self.sampling_rate)
+        fe_stats = self._statistics(patch[:, 1], self.sampling_rate)
+
+        def describe(sensor, stats):
+            return (
+                f"{sensor}: mean {stats['mean']:.6g}, std {stats['std']:.6g}, "
+                f"RMS {stats['rms']:.6g}, peak {stats['peak']:.6g}, "
+                f"skewness {stats['skewness']:.6g}, kurtosis {stats['kurtosis']:.6g}, "
+                f"crest factor {stats['crest']:.6g}, dominant frequency {stats['dominant_frequency']:.3f}. "
+            )
+
         return (
-            f"A local vibration patch contains statistical features. "
-            f"Load {load_hp} horsepower. Mean {s['mean']:.6g}, std {s['std']:.6g}, "
-            f"RMS {s['rms']:.6g}, peak {s['peak']:.6g}, skewness {s['skewness']:.6g}, "
-            f"kurtosis {s['kurtosis']:.6g}, crest factor {s['crest']:.6g}. "
-            f"Dominant frequency {s['dominant_frequency']:.3f}"
+            f"A local synchronized bearing vibration patch. Load {load_hp} horsepower. "
+            + describe("Drive-end sensor", de_stats)
+            + describe("Fan-end sensor", fe_stats)
         )
 
     @torch.inference_mode()
@@ -60,7 +71,10 @@ class PHMPromptEmbedder(nn.Module):
             raise ValueError("invalid patch_len or patch_stride")
         if (length - patch_len) % patch_stride != 0:
             raise ValueError("the configured patch stride leaves an uncovered signal tail")
-        patches = signals.squeeze(-1).unfold(dimension=1, size=patch_len, step=patch_stride)
+        if signals.ndim != 3 or signals.shape[2] != 2:
+            raise ValueError(f"V4 signals 必须为 [B, 长度, 2] 的 DE/FE 数据，实际为 {tuple(signals.shape)}")
+        # unfold 输出 [B, P, 2, patch_len]，换轴后按 DE、FE 计算每个局部片段的统计量。
+        patches = signals.unfold(dimension=1, size=patch_len, step=patch_stride).permute(0, 1, 3, 2)
         prompts = []
         for i in range(b):
             for j in range(patches.shape[1]):
@@ -75,7 +89,9 @@ class PHMPromptEmbedder(nn.Module):
     def forward(self, signals, loads_hp):
         """Backward compatible global prompt embedding."""
         b, _, n = signals.shape
-        prompts = [self._build_prompt(signals[i, :, 0], int(loads_hp[i])) for i in range(b)]
+        if n != 2:
+            raise ValueError(f"V4 signals 必须含 DE、FE 两个通道，实际通道数为 {n}")
+        prompts = [self._build_prompt(signals[i], int(loads_hp[i])) for i in range(b)]
         encoded = self.tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(self.device)
         hidden = self.model(**encoded).last_hidden_state
         pos = encoded["attention_mask"].sum(dim=1).sub(1)

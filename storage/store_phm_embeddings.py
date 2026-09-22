@@ -1,4 +1,4 @@
-"""离线生成 V3-A 重叠 patch 的 CWRU PHM GPT-2 embedding。"""
+"""离线生成 V4 DE/FE 双传感器重叠 patch 的 CWRU PHM GPT-2 embedding。"""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from utils.phm_prompt import PHMPromptEmbedder
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-root", type=Path, required=True)
-    parser.add_argument("--embedding-root", type=Path, default=Path("Embeddings/CWRU_v3a_patch256_stride128"))
+    parser.add_argument("--embedding-root", type=Path, default=Path("Embeddings/CWRU_v4_de_fe_patch256_stride128"))
     parser.add_argument("--model-name", default="gpt2")
     parser.add_argument("--window-size", type=int, default=1024)
     parser.add_argument("--stride", type=int, default=1024)
@@ -71,7 +71,8 @@ def main():
                 with h5py.File(destinations[source_i], "w") as f:
                     f.create_dataset("embedding", data=embeddings[local_i], compression="gzip")
                     # 缓存元数据让训练脚本可追溯其 token 几何，防止误用 V2 的 16-patch 文件。
-                    f.attrs["version"] = "V3A_overlap_patch_position_cls"
+                    f.attrs["version"] = "V4_DE_FE_overlap_patch_position_cls"
+                    f.attrs["sensors"] = "DE,FE"
                     f.attrs["window_size"] = args.window_size
                     f.attrs["patch_len"] = args.patch_len
                     f.attrs["patch_stride"] = args.patch_stride

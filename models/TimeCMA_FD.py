@@ -73,7 +73,9 @@ class TimeCMAFaultDiagnosis(nn.Module):
         self.patch_stride = patch_stride
         self.normalize = Normalize(num_nodes, affine=False)
 
-        self.patch_embedding = nn.Linear(patch_len, channel)
+        # 每个局部 token 同时保留 DE、FE 的同步采样点，故输入维为 patch_len × 传感器数。
+        self.num_nodes = num_nodes
+        self.patch_embedding = nn.Linear(patch_len * num_nodes, channel)
         # TransformerEncoder 本身不添加时序位置。两个模态分别加入可学习位置编码，
         # 使“冲击出现在哪个局部片段”成为模型可利用的信息。
         self.ts_cls_token = nn.Parameter(torch.empty(1, 1, channel))
@@ -109,15 +111,17 @@ class TimeCMAFaultDiagnosis(nn.Module):
             nn.init.normal_(parameter, mean=0.0, std=0.02)
 
     def forward(self, signal: torch.Tensor, embeddings: torch.Tensor) -> torch.Tensor:
-        if signal.ndim != 3 or signal.shape[1] != self.num_patches * self.patch_stride + self.patch_len - self.patch_stride:
-            raise ValueError(f"signal must have shape [B, {self.num_patches * self.patch_stride + self.patch_len - self.patch_stride}, N]")
+        expected_length = self.num_patches * self.patch_stride + self.patch_len - self.patch_stride
+        if signal.ndim != 3 or signal.shape[1] != expected_length or signal.shape[2] != self.num_nodes:
+            raise ValueError(f"signal must have shape [B, {expected_length}, {self.num_nodes}]")
         if embeddings.ndim != 4 or embeddings.shape[1] != self.prompt_position.shape[-1] or embeddings.shape[2] != self.num_patches or embeddings.shape[3] != 1:
             expected = f"[B, {self.prompt_position.shape[-1]}, {self.num_patches}, 1]"
             raise ValueError(f"V3 embedding shape mismatch: expected {expected}, got {tuple(embeddings.shape)}")
 
         signal = self.normalize(signal.float(), "norm").squeeze(-1)
-        # unfold 保留相邻 patch 的 128 个重叠采样点，输出 [B, 7, 256]。
+        # unfold 后为 [B, 7, 2, 256]。调整并拼接 DE、FE，得到每个 patch 一个 token 的 [B, 7, 512]。
         patches = signal.unfold(dimension=1, size=self.patch_len, step=self.patch_stride)
+        patches = patches.permute(0, 1, 3, 2).reshape(signal.shape[0], self.num_patches, -1)
         ts_tokens = self.patch_embedding(patches)
         ts_cls = self.ts_cls_token.expand(signal.shape[0], -1, -1)
         ts_tokens = torch.cat((ts_cls, ts_tokens), dim=1) + self.ts_position

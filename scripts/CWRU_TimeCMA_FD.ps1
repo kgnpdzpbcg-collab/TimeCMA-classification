@@ -1,7 +1,7 @@
 # 在项目根目录执行：powershell -ExecutionPolicy Bypass -File scripts\CWRU_TimeCMA_FD.ps1
-# 第一阶段只生成冻结 GPT-2 embedding；首次执行会下载模型权重并在本地缓存。
+# V4 使用同步 DE、FE 两个传感器；第一阶段只生成冻结 GPT-2 embedding。
 $dataRoot = 'D:\project\公开数据集\a8c15-main\CWRU轴承数据\cwru_data'
-$embeddingRoot = 'Embeddings\CWRU_v3a_patch256_stride128'
+$embeddingRoot = 'Embeddings\CWRU_v4_de_fe_patch256_stride128'
 
 uv run python -m storage.store_phm_embeddings `
     --data-root $dataRoot `

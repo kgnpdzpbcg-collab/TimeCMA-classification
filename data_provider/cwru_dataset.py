@@ -131,38 +131,46 @@ class CWRUDataset(Dataset):
             raise RuntimeError(f"{split} 集没有生成任何长度为 {window_size} 的信号窗口")
 
     @staticmethod
-    def _read_de_signal(path: Path) -> np.ndarray:
-        """从 MAT 中定位 Drive-End 字段，例如 ``X105_DE_time``。
+    def _read_sensor_signal(path: Path, sensor: str) -> np.ndarray:
+        """读取指定传感器字段，例如 ``X105_DE_time`` 或 ``X105_FE_time``。
 
-        少数 normal 文件含两个相邻实验编号的 DE 字段，此时优先选择与文件名末尾编号一致的
-        字段，例如 ``normal_2_99.mat`` 对应 ``X099_DE_time``。
+        少数 normal 文件含两个相邻实验编号的数据字段。优先选取与文件名末尾编号一致的
+        字段，避免将 ``normal_2_99.mat`` 错误读成 ``X098`` 的重复实验数据。
         """
+        sensor = sensor.upper()
+        if sensor not in {"DE", "FE"}:
+            raise ValueError(f"不支持的 CWRU 传感器: {sensor}")
         contents = loadmat(path)
-        candidates = [key for key in contents if key.lower().endswith("_de_time")]
+        candidates = [key for key in contents if key.lower().endswith(f"_{sensor.lower()}_time")]
         file_id = re.search(r"_(\d+)$", path.stem)
-        expected_key = f"X{int(file_id.group(1)):03d}_DE_time" if file_id else None
+        expected_key = f"X{int(file_id.group(1)):03d}_{sensor}_time" if file_id else None
         if expected_key in candidates:
             selected = expected_key
         elif len(candidates) == 1:
             selected = candidates[0]
         else:
-            raise ValueError(f"{path.name} 中无法唯一匹配 DE 信号字段: {candidates}")
+            raise ValueError(f"{path.name} 中无法唯一匹配 {sensor} 信号字段: {candidates}")
         signal = np.asarray(contents[selected], dtype=np.float32).reshape(-1)
         if signal.size == 0:
-            raise ValueError(f"{path.name} 的 DE 信号为空")
+            raise ValueError(f"{path.name} 的 {sensor} 信号为空")
         return signal
 
     def _load_signal(self, path: Path) -> np.ndarray:
-        """懒加载并缓存原始 DE 信号，DataLoader 多进程时每个进程各自维护安全缓存。"""
+        """懒加载并缓存同步 DE、FE 信号，返回 ``[时间长度, 2]``。"""
         if path not in self._signal_cache:
-            self._signal_cache[path] = self._read_de_signal(path)
+            de_signal = self._read_sensor_signal(path, "DE")
+            fe_signal = self._read_sensor_signal(path, "FE")
+            if de_signal.shape != fe_signal.shape:
+                raise ValueError(f"{path.name} 的 DE/FE 长度不一致: {de_signal.size} vs {fe_signal.size}")
+            self._signal_cache[path] = np.stack((de_signal, fe_signal), axis=-1)
         return self._signal_cache[path]
 
     def _build_records(self, paths: list[Path]) -> list[WindowRecord]:
         """预先建立窗口索引；仅保存索引，实际信号在访问时加载以控制内存占用。"""
         records: list[WindowRecord] = []
         for path in paths:
-            signal_length = self._load_signal(path).size
+            # 双传感器缓存的形状为 [时间长度, 2]；只能取第 0 维建窗，不能用元素总数 size。
+            signal_length = self._load_signal(path).shape[0]
             for start in range(0, signal_length - self.window_size + 1, self.stride):
                 records.append(WindowRecord(path, start, _parse_label(path), _parse_load(path)))
         return records
@@ -173,8 +181,8 @@ class CWRUDataset(Dataset):
     def __getitem__(self, index: int):
         record = self.records[index]
         signal = self._load_signal(record.path)[record.start:record.start + self.window_size]
-        # TimeCMA 的输入约定为 [时间长度, 传感器数]；第一版只使用 DE，故 N=1。
-        signal_tensor = torch.from_numpy(signal[:, None].copy())
+        # TimeCMA 的输入约定为 [时间长度, 传感器数]；V4 固定使用同步 DE、FE，故 N=2。
+        signal_tensor = torch.from_numpy(signal.copy())
         label_tensor = torch.tensor(record.label, dtype=torch.long)
 
         if self.embedding_root is None:
@@ -186,5 +194,5 @@ class CWRUDataset(Dataset):
             raise FileNotFoundError(f"缺少样本 embedding: {embedding_path}")
         with h5py.File(embedding_path, "r") as handle:
             embedding = torch.from_numpy(handle["embedding"][:].astype(np.float32, copy=False))
-        # 存储格式固定为 [E, N, 1]，与原 TimeCMA 的 CMA 输入接口兼容。
+        # 存储格式固定为 [E, P, 1]，P 是一个窗口内部的 patch 数。
         return signal_tensor, label_tensor, embedding
