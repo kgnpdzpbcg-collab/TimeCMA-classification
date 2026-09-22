@@ -38,8 +38,12 @@ class PHMPromptEmbedder(nn.Module):
             "dominant_frequency": idx * sampling_rate / x.numel(),
         }
 
-    def _build_prompt(self, patch, load_hp):
-        """将一个同步 DE/FE 局部片段转为文本，不输入故障类别标签。"""
+    def _build_prompt(self, patch, load_hp, include_load_hp=True):
+        """将一个同步 DE/FE 局部片段转为文本，不输入故障类别标签。
+
+        ``include_load_hp`` 区分条件化跨工况实验与纯信号跨工况消融。该开关属于
+        embedding 配方的一部分，调用方必须为两种配置使用不同的缓存目录。
+        """
         if patch.ndim != 2 or patch.shape[1] != 2:
             raise ValueError(f"V4 prompt patch 必须为 [长度, 2] 的 DE/FE 数据，实际为 {tuple(patch.shape)}")
         de_stats = self._statistics(patch[:, 0], self.sampling_rate)
@@ -53,14 +57,13 @@ class PHMPromptEmbedder(nn.Module):
                 f"crest factor {stats['crest']:.6g}, dominant frequency {stats['dominant_frequency']:.3f}. "
             )
 
-        return (
-            f"A local synchronized bearing vibration patch. Load {load_hp} horsepower. "
-            + describe("Drive-end sensor", de_stats)
-            + describe("Fan-end sensor", fe_stats)
-        )
+        prefix = "A local synchronized bearing vibration patch. "
+        if include_load_hp:
+            prefix += f"Load {load_hp} horsepower. "
+        return prefix + describe("Drive-end sensor", de_stats) + describe("Fan-end sensor", fe_stats)
 
     @torch.inference_mode()
-    def patch_forward(self, signals, loads_hp, patch_len=256, patch_stride=128):
+    def patch_forward(self, signals, loads_hp, patch_len=256, patch_stride=128, include_load_hp=True):
         """为重叠信号 patch 生成 ``[B, E, P, 1]`` 的冻结文本 embedding。
 
         ``patch_stride`` 仅控制模型内部的局部 token，不改变 CWRU 数据集的 1024 点样本
@@ -78,7 +81,7 @@ class PHMPromptEmbedder(nn.Module):
         prompts = []
         for i in range(b):
             for j in range(patches.shape[1]):
-                prompts.append(self._build_prompt(patches[i, j], int(loads_hp[i])))
+                prompts.append(self._build_prompt(patches[i, j], int(loads_hp[i]), include_load_hp))
         encoded = self.tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(self.device)
         hidden = self.model(**encoded).last_hidden_state
         pos = encoded["attention_mask"].sum(dim=1).sub(1)
@@ -86,12 +89,12 @@ class PHMPromptEmbedder(nn.Module):
         return emb.reshape(b, patches.shape[1], -1).permute(0, 2, 1).unsqueeze(-1)
 
     @torch.inference_mode()
-    def forward(self, signals, loads_hp):
+    def forward(self, signals, loads_hp, include_load_hp=True):
         """Backward compatible global prompt embedding."""
         b, _, n = signals.shape
         if n != 2:
             raise ValueError(f"V4 signals 必须含 DE、FE 两个通道，实际通道数为 {n}")
-        prompts = [self._build_prompt(signals[i], int(loads_hp[i])) for i in range(b)]
+        prompts = [self._build_prompt(signals[i], int(loads_hp[i]), include_load_hp) for i in range(b)]
         encoded = self.tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(self.device)
         hidden = self.model(**encoded).last_hidden_state
         pos = encoded["attention_mask"].sum(dim=1).sub(1)

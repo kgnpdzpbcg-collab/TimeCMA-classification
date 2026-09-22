@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "protocol": "lolo_load_v1",
+  "fold_name": "test_0hp_val_1hp",
+  "complete_partition": true,
+  "require_all_classes": true,
+  "dataset": "CWRU",
+  "window_size": 1024,
+  "window_stride": 1024,
+  "sensors": [
+    "DE",
+    "FE"
+  ],
+  "train_loads": [
+    2,
+    3
+  ],
+  "val_loads": [
+    1
+  ],
+  "test_loads": [
+    0
+  ],
+  "files": {
+    "train": [
+      "2HP/12k_Drive_End_B007_2_120.mat",
+      "2HP/12k_Drive_End_B014_2_187.mat",
+      "2HP/12k_Drive_End_B021_2_224.mat",
+      "2HP/12k_Drive_End_IR007_2_107.mat",
+      "2HP/12k_Drive_End_IR014_2_171.mat",
+      "2HP/12k_Drive_End_IR021_2_211.mat",
+      "2HP/12k_Drive_End_OR007@6_2_132.mat",
+      "2HP/12k_Drive_End_OR014@6_2_199.mat",
+      "2HP/12k_Drive_End_OR021@6_2_236.mat",
+      "2HP/normal_2_99.mat",
+      "3HP/12k_Drive_End_B007_3_121.mat",
+      "3HP/12k_Drive_End_B014_3_188.mat",
+      "3HP/12k_Drive_End_B021_3_225.mat",
+      "3HP/12k_Drive_End_IR007_3_108.mat",
+      "3HP/12k_Drive_End_IR014_3_172.mat",
+      "3HP/12k_Drive_End_IR021_3_212.mat",
+      "3HP/12k_Drive_End_OR007@6_3_133.mat",
+      "3HP/12k_Drive_End_OR014@6_3_200.mat",
+      "3HP/12k_Drive_End_OR021@6_3_237.mat",
+      "3HP/normal_3_100.mat"
+    ],
+    "val": [
+      "1HP/12k_Drive_End_B007_1_119.mat",
+      "1HP/12k_Drive_End_B014_1_186.mat",
+      "1HP/12k_Drive_End_B021_1_223.mat",
+      "1HP/12k_Drive_End_IR007_1_106.mat",
+      "1HP/12k_Drive_End_IR014_1_170.mat",
+      "1HP/12k_Drive_End_IR021_1_210.mat",
+      "1HP/12k_Drive_End_OR007@6_1_131.mat",
+      "1HP/12k_Drive_End_OR014@6_1_198.mat",
+      "1HP/12k_Drive_End_OR021@6_1_235.mat",
+      "1HP/normal_1_98.mat"
+    ],
+    "test": [
+      "0HP/12k_Drive_End_B007_0_118.mat",
+      "0HP/12k_Drive_End_B014_0_185.mat",
+      "0HP/12k_Drive_End_B021_0_222.mat",
+      "0HP/12k_Drive_End_IR007_0_105.mat",
+      "0HP/12k_Drive_End_IR014_0_169.mat",
+      "0HP/12k_Drive_End_IR021_0_209.mat",
+      "0HP/12k_Drive_End_OR007@6_0_130.mat",
+      "0HP/12k_Drive_End_OR014@6_0_197.mat",
+      "0HP/12k_Drive_End_OR021@6_0_234.mat",
+      "0HP/normal_0_97.mat"
+    ]
+  },
+  "mat_file_counts": {
+    "train": {
+      "normal": 2,
+      "ball": 6,
+      "inner": 6,
+      "outer": 6
+    },
+    "val": {
+      "normal": 1,
+      "ball": 3,
+      "inner": 3,
+      "outer": 3
+    },
+    "test": {
+      "normal": 1,
+      "ball": 3,
+      "inner": 3,
+      "outer": 3
+    }
+  },
+  "window_counts": {
+    "train": {
+      "total": 3083,
+      "normal": 947,
+      "ball": 712,
+      "inner": 712,
+      "outer": 712
+    },
+    "val": {
+      "total": 1539,
+      "normal": 472,
+      "ball": 355,
+      "inner": 355,
+      "outer": 357
+    },
+    "test": {
+      "total": 1305,
+      "normal": 238,
+      "ball": 356,
+      "inner": 355,
+      "outer": 356
+    }
+  }
+}

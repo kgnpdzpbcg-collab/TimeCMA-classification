@@ -17,16 +17,18 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from data_provider.cwru_dataset import CWRUDataset
+from data_provider.cwru_dataset import CWRUDataset, manifest_sha256
 from models.TimeCMA_FD import TimeCMAFaultDiagnosis
+from utils.embedding_cache import load_cache_spec
 from utils.metrics import classification_metrics
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="使用 TimeCMA CMA 进行 CWRU 故障分类")
     parser.add_argument("--data-root", type=Path, required=True)
-    parser.add_argument("--embedding-root", type=Path, default=Path("Embeddings/CWRU_v4_de_fe_patch256_stride128"))
-    parser.add_argument("--output-dir", type=Path, default=Path("Results/CWRU_TimeCMA_FD/v4_de_fe_overlap_true_cross_attention"))
+    parser.add_argument("--split-manifest", type=Path, required=True, help="显式 MAT 文件级划分 manifest")
+    parser.add_argument("--embedding-root", type=Path, required=True, help="含 cache_spec.json 与 by_sample/ 的缓存根目录")
+    parser.add_argument("--output-dir", type=Path, required=True, help="当前 fold 的独立结果目录")
     parser.add_argument("--window-size", type=int, default=1024)
     parser.add_argument("--stride", type=int, default=1024)
     parser.add_argument("--patch-len", type=int, default=256)
@@ -48,7 +50,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def set_seed(seed: int) -> None:
-    """固定常用随机源，确保文件切分、窗口顺序和模型初始化均可重现。"""
+    """固定模型初始化与 DataLoader 顺序；文件划分由 manifest 固定，不依赖随机种子。"""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -80,8 +82,22 @@ def main() -> None:
     args = parse_args()
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    cache_spec, cache_spec_digest = load_cache_spec(args.embedding_root)
+    expected = {
+        "window_size": args.window_size,
+        "window_stride": args.stride,
+        "patch_len": args.patch_len,
+        "patch_stride": args.patch_stride,
+        "embedding_dim": args.d_llm,
+    }
+    for key, value in expected.items():
+        if cache_spec[key] != value:
+            raise ValueError(f"训练参数 {key}={value} 与缓存配置 {cache_spec[key]} 不一致")
     datasets = {
-        split: CWRUDataset(args.data_root, split, args.window_size, args.stride, args.seed, embedding_root=args.embedding_root)
+        split: CWRUDataset(
+            args.data_root, split, args.window_size, args.stride,
+            manifest_path=args.split_manifest, embedding_root=args.embedding_root,
+        )
         for split in ("train", "val", "test")
     }
     loaders = {
@@ -90,7 +106,7 @@ def main() -> None:
         "test": DataLoader(datasets["test"], args.batch_size, shuffle=False, num_workers=args.num_workers),
     }
     model = TimeCMAFaultDiagnosis(
-        num_nodes=2, seq_len=args.window_size, num_classes=datasets["train"].num_classes,
+        num_nodes=len(cache_spec["sensors"]), seq_len=args.window_size, num_classes=datasets["train"].num_classes,
         patch_len=args.patch_len, patch_stride=args.patch_stride,
         channel=args.channel, d_llm=args.d_llm, align_dim=args.align_dim,
         e_layer=args.encoder_layers, head=args.heads, dropout=args.dropout,
@@ -123,7 +139,11 @@ def main() -> None:
         print(f"epoch={epoch:03d} train_loss={row['train_loss']:.4f} val_f1={row['macro_f1']:.4f} val_acc={row['accuracy']:.4f}")
         if val_metrics["macro_f1"] > best_f1:
             best_f1, stale_epochs = val_metrics["macro_f1"], 0
-            torch.save({"model_state": model.state_dict(), "args": vars(args), "epoch": epoch, "val_metrics": val_metrics}, args.output_dir / "best_model.pt")
+            torch.save({
+                "model_state": model.state_dict(), "args": vars(args), "epoch": epoch,
+                "val_metrics": val_metrics, "split_manifest_sha256": manifest_sha256(args.split_manifest),
+                "cache_spec_sha256": cache_spec_digest,
+            }, args.output_dir / "best_model.pt")
         else:
             stale_epochs += 1
             if stale_epochs >= args.patience:
@@ -133,7 +153,13 @@ def main() -> None:
     checkpoint = torch.load(args.output_dir / "best_model.pt", map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state"])
     test_metrics = evaluate(model, loaders["test"], criterion, device, datasets["test"].num_classes, desc="Final test")
-    report = {"best_epoch": checkpoint["epoch"], "best_val_metrics": checkpoint["val_metrics"], "test_metrics": test_metrics, "history": history}
+    report = {
+        "best_epoch": checkpoint["epoch"], "best_val_metrics": checkpoint["val_metrics"],
+        "test_metrics": test_metrics, "history": history,
+        "split_manifest": str(args.split_manifest.resolve()),
+        "split_manifest_sha256": manifest_sha256(args.split_manifest),
+        "cache_spec": cache_spec, "cache_spec_sha256": cache_spec_digest,
+    }
     with (args.output_dir / "metrics.json").open("w", encoding="utf-8") as file:
         json.dump(report, file, ensure_ascii=False, indent=2)
     print(json.dumps({"best_epoch": checkpoint["epoch"], "test_metrics": test_metrics}, ensure_ascii=False, indent=2))
