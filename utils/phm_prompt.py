@@ -1,4 +1,4 @@
-"""Frozen GPT-2 prompt embedding generator for PHM signals (V2 patch alignment)."""
+"""冻结 GPT-2 的 PHM 局部统计 prompt embedding 生成器（V3-A）。"""
 
 from __future__ import annotations
 
@@ -49,10 +49,18 @@ class PHMPromptEmbedder(nn.Module):
         )
 
     @torch.inference_mode()
-    def patch_forward(self, signals, loads_hp, patch_len=64):
-        """Return [B,E,P,1] patch-level embeddings."""
+    def patch_forward(self, signals, loads_hp, patch_len=256, patch_stride=128):
+        """为重叠信号 patch 生成 ``[B, E, P, 1]`` 的冻结文本 embedding。
+
+        ``patch_stride`` 仅控制模型内部的局部 token，不改变 CWRU 数据集的 1024 点样本
+        窗口及其文件级划分。对 V3-A 的 1024/256/128 配置，P 固定为 7。
+        """
         b, length, _ = signals.shape
-        patches = signals.squeeze(-1).reshape(b, length // patch_len, patch_len)
+        if patch_len <= 0 or patch_stride <= 0 or length < patch_len:
+            raise ValueError("invalid patch_len or patch_stride")
+        if (length - patch_len) % patch_stride != 0:
+            raise ValueError("the configured patch stride leaves an uncovered signal tail")
+        patches = signals.squeeze(-1).unfold(dimension=1, size=patch_len, step=patch_stride)
         prompts = []
         for i in range(b):
             for j in range(patches.shape[1]):

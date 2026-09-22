@@ -25,10 +25,12 @@ from utils.metrics import classification_metrics
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="使用 TimeCMA CMA 进行 CWRU 故障分类")
     parser.add_argument("--data-root", type=Path, required=True)
-    parser.add_argument("--embedding-root", type=Path, default=Path("Embeddings/CWRU"))
-    parser.add_argument("--output-dir", type=Path, default=Path("Results/CWRU_TimeCMA_FD"))
+    parser.add_argument("--embedding-root", type=Path, default=Path("Embeddings/CWRU_v3a_patch256_stride128"))
+    parser.add_argument("--output-dir", type=Path, default=Path("Results/CWRU_TimeCMA_FD/v3ab_overlap_true_cross_attention"))
     parser.add_argument("--window-size", type=int, default=1024)
     parser.add_argument("--stride", type=int, default=1024)
+    parser.add_argument("--patch-len", type=int, default=256)
+    parser.add_argument("--patch-stride", type=int, default=128)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=0, help="Windows 推荐保持 0")
     parser.add_argument("--epochs", type=int, default=50)
@@ -37,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-decay", type=float, default=1e-3)
     parser.add_argument("--channel", type=int, default=64)
     parser.add_argument("--d-llm", type=int, default=768)
+    parser.add_argument("--align-dim", type=int, default=128)
     parser.add_argument("--encoder-layers", type=int, default=2)
     parser.add_argument("--heads", type=int, default=8)
     parser.add_argument("--dropout", type=float, default=0.2)
@@ -88,7 +91,9 @@ def main() -> None:
     }
     model = TimeCMAFaultDiagnosis(
         num_nodes=1, seq_len=args.window_size, num_classes=datasets["train"].num_classes,
-        channel=args.channel, d_llm=args.d_llm, e_layer=args.encoder_layers, head=args.heads, dropout=args.dropout,
+        patch_len=args.patch_len, patch_stride=args.patch_stride,
+        channel=args.channel, d_llm=args.d_llm, align_dim=args.align_dim,
+        e_layer=args.encoder_layers, head=args.heads, dropout=args.dropout,
     ).to(device)
     optimizer = AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)

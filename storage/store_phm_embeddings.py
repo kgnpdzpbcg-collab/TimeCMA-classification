@@ -1,14 +1,21 @@
-"""Offline generation of patch-level CWRU PHM GPT-2 embeddings."""
+"""离线生成 V3-A 重叠 patch 的 CWRU PHM GPT-2 embedding。"""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 
 import h5py
 import torch
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
+
+# 既支持 ``python -m storage.store_phm_embeddings``，也支持项目根目录中常用的
+# ``python storage/store_phm_embeddings.py``。后者的默认 sys.path 是 storage/，
+# 因此需显式补入项目根目录，避免 data_provider 导入失败。
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from data_provider.cwru_dataset import CWRUDataset
 from utils.phm_prompt import PHMPromptEmbedder
@@ -17,10 +24,13 @@ from utils.phm_prompt import PHMPromptEmbedder
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-root", type=Path, required=True)
-    parser.add_argument("--embedding-root", type=Path, default=Path("Embeddings/CWRU_patch_prompt"))
+    parser.add_argument("--embedding-root", type=Path, default=Path("Embeddings/CWRU_v3a_patch256_stride128"))
     parser.add_argument("--model-name", default="gpt2")
     parser.add_argument("--window-size", type=int, default=1024)
     parser.add_argument("--stride", type=int, default=1024)
+    # 注意：patch stride 不等于数据集窗口 stride；前者只控制一个 1024 点样本内部的 token 重叠。
+    parser.add_argument("--patch-len", type=int, default=256)
+    parser.add_argument("--patch-stride", type=int, default=128)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=2024)
@@ -53,12 +63,19 @@ def main():
             embeddings = embedder.patch_forward(
                 signals.index_select(0, idx),
                 loads.index_select(0, idx),
+                patch_len=args.patch_len,
+                patch_stride=args.patch_stride,
             ).cpu().numpy()
 
             for local_i, source_i in enumerate(needed):
                 with h5py.File(destinations[source_i], "w") as f:
                     f.create_dataset("embedding", data=embeddings[local_i], compression="gzip")
-                    f.attrs["version"] = "V2_patch_prompt_alignment"
+                    # 缓存元数据让训练脚本可追溯其 token 几何，防止误用 V2 的 16-patch 文件。
+                    f.attrs["version"] = "V3A_overlap_patch_position_cls"
+                    f.attrs["window_size"] = args.window_size
+                    f.attrs["patch_len"] = args.patch_len
+                    f.attrs["patch_stride"] = args.patch_stride
+                    f.attrs["num_patches"] = embeddings.shape[2]
             created += len(needed)
             skipped += len(sample_ids) - len(needed)
             progress.set_postfix(created=created, skipped=skipped)
