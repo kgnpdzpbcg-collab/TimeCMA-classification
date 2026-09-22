@@ -34,7 +34,7 @@ def validate_cache_spec(spec: dict[str, Any]) -> None:
     if spec["schema_version"] != 1:
         raise ValueError(f"不支持的缓存 schema_version: {spec['schema_version']}")
     if spec["sensors"] != ["DE", "FE"]:
-        raise ValueError(f"当前 V4/V5 仅支持同步 DE、FE 缓存，实际为: {spec['sensors']}")
+        raise ValueError(f"当前 V4/V5/V6 仅支持同步 DE、FE 缓存，实际为: {spec['sensors']}")
     if spec["window_size"] <= 0 or spec["window_stride"] <= 0:
         raise ValueError("缓存窗口长度与步长必须为正数")
     if spec["patch_len"] <= 0 or spec["patch_stride"] <= 0 or spec["num_patches"] <= 0:
@@ -84,7 +84,7 @@ def build_v4_de_fe_cache_spec(
     *, model_name: str, window_size: int, window_stride: int, patch_len: int,
     patch_stride: int, sampling_rate: int, include_load_hp: bool,
 ) -> dict[str, Any]:
-    """构造 V4/V5 DE+FE 局部统计 prompt 的标准缓存配方。"""
+    """构造 V6 DE+FE 证据型 Prompt 的标准缓存配方。"""
     if window_size < patch_len or (window_size - patch_len) % patch_stride != 0:
         raise ValueError("window_size、patch_len、patch_stride 不能完整生成 patch")
     return {
@@ -99,6 +99,6 @@ def build_v4_de_fe_cache_spec(
         "embedding_dim": 768,
         "gpt_model": model_name,
         "sampling_rate": sampling_rate,
-        "prompt_template_version": "v4_de_fe_local_statistics_v2",
+        "prompt_template_version": "v6_local_global_mechanism_v1",
         "include_load_hp": include_load_hp,
     }
