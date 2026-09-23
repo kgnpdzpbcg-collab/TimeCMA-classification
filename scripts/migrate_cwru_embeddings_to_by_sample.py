@@ -74,6 +74,9 @@ def main() -> None:
         patch_stride=args.patch_stride,
         sampling_rate=args.sampling_rate,
         include_load_hp=args.include_load_hp,
+        # 本脚本迁移的是 V7 之前的缓存，它们全部由最后一层 + last-valid-token 生成。
+        pooling="last_token",
+        pooling_layer=12,
     )
     expected_shape = (spec["embedding_dim"], spec["num_patches"], 1)
     validate_h5_files(files, expected_shape)

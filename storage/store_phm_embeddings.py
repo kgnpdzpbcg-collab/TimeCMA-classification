@@ -1,4 +1,4 @@
-"""按样本生成 split 无关的 V6 DE/FE 证据型 Prompt 冻结 GPT-2 embedding。
+"""按样本生成 split 无关的 V7 DE/FE 证据型 Prompt 冻结 GPT-2 embedding。
 
 本脚本总是枚举全部 CWRU 窗口；Train/Val/Test 的归属由训练阶段的 manifest 决定，
 不会影响 embedding 的路径或内容。不同 prompt 配方必须使用不同 embedding-root。
@@ -20,7 +20,12 @@ if __package__ in {None, ""}:
 
 from data_provider.cwru_dataset import CWRUDataset
 from utils.embedding_cache import build_v4_de_fe_cache_spec, write_cache_spec
-from utils.phm_prompt import PHMPromptEmbedder
+from utils.phm_prompt import DEFAULT_POOLING_LAYER, PHMPromptEmbedder
+
+
+# 必须与 PHMPromptEmbedder._masked_evidence_pool / _select_hidden 的实现一一对应；
+# 改池化时两处一起改，否则缓存配方会与缓存内容不符。
+POOLING = "evidence_span_mean"
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,6 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--patch-stride", type=int, default=128)
     parser.add_argument("--sampling-rate", type=int, default=12000)
     parser.add_argument("--include-load-hp", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--pooling-layer",
+        type=int,
+        default=DEFAULT_POOLING_LAYER,
+        help="取第几层隐状态做池化；0 是 embedding 层、12 是最后一层。该值会写进 cache_spec。",
+    )
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--overwrite", action="store_true")
@@ -58,6 +69,8 @@ def main() -> None:
         patch_stride=args.patch_stride,
         sampling_rate=args.sampling_rate,
         include_load_hp=args.include_load_hp,
+        pooling=POOLING,
+        pooling_layer=args.pooling_layer,
     )
     spec_digest = write_cache_spec(args.embedding_root, spec)
     output_dir = args.embedding_root / "by_sample"
@@ -66,7 +79,12 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # 缓存配方使用逻辑名称 args.model_name；模型可从离线目录读取，避免因绝对路径不同破坏缓存复用。
     model_source = args.model_source or args.model_name
-    embedder = PHMPromptEmbedder(model_source, device=device, sampling_rate=args.sampling_rate)
+    embedder = PHMPromptEmbedder(
+        model_source,
+        device=device,
+        sampling_rate=args.sampling_rate,
+        pooling_layer=args.pooling_layer,
+    )
     # split='all' 明确枚举 40 个 MAT 的所有窗口；不接收随机 seed 或 split manifest。
     dataset = CWRUDataset(args.data_root, "all", args.window_size, args.stride)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)

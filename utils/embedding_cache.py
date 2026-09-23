@@ -13,11 +13,16 @@ from typing import Any
 
 
 CACHE_SPEC_FILENAME = "cache_spec.json"
+# schema_version 1 与 2 共有的字段。
 REQUIRED_CACHE_SPEC_FIELDS = {
     "schema_version", "dataset", "sensors", "window_size", "window_stride",
     "patch_len", "patch_stride", "num_patches", "embedding_dim", "gpt_model",
     "sampling_rate", "prompt_template_version", "include_load_hp",
 }
+# schema_version 2 新增：池化方式与池化层直接决定缓存里的数值，必须参与摘要，否则换
+# 了池化仍会算出相同的 cache_spec_sha256，新旧缓存会被静默混用。
+V2_CACHE_SPEC_FIELDS = {"pooling", "pooling_layer"}
+SUPPORTED_SCHEMA_VERSIONS = (1, 2)
 
 
 def cache_spec_digest(spec: dict[str, Any]) -> str:
@@ -28,11 +33,16 @@ def cache_spec_digest(spec: dict[str, Any]) -> str:
 
 def validate_cache_spec(spec: dict[str, Any]) -> None:
     """验证训练、生成与迁移脚本共享的缓存描述字段。"""
-    missing = REQUIRED_CACHE_SPEC_FIELDS.difference(spec)
+    if "schema_version" not in spec:
+        raise ValueError("cache_spec.json 缺少字段: ['schema_version']")
+    if spec["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
+        raise ValueError(f"不支持的缓存 schema_version: {spec['schema_version']}")
+    required = set(REQUIRED_CACHE_SPEC_FIELDS)
+    if spec["schema_version"] >= 2:
+        required |= V2_CACHE_SPEC_FIELDS
+    missing = required.difference(spec)
     if missing:
         raise ValueError(f"cache_spec.json 缺少字段: {sorted(missing)}")
-    if spec["schema_version"] != 1:
-        raise ValueError(f"不支持的缓存 schema_version: {spec['schema_version']}")
     if spec["sensors"] != ["DE", "FE"]:
         raise ValueError(f"当前 V4/V5/V6 仅支持同步 DE、FE 缓存，实际为: {spec['sensors']}")
     if spec["window_size"] <= 0 or spec["window_stride"] <= 0:
@@ -82,13 +92,22 @@ def write_cache_spec(cache_root: str | Path, spec: dict[str, Any]) -> str:
 
 def build_v4_de_fe_cache_spec(
     *, model_name: str, window_size: int, window_stride: int, patch_len: int,
-    patch_stride: int, sampling_rate: int, include_load_hp: bool,
+    patch_stride: int, sampling_rate: int, include_load_hp: bool, pooling: str,
+    pooling_layer: int,
 ) -> dict[str, Any]:
-    """构造 V6 DE+FE 证据型 Prompt 的标准缓存配方。"""
+    """构造 V7 DE+FE 证据型 Prompt 的标准缓存配方。
+
+    ``pooling`` 与 ``pooling_layer`` 都没有默认值：换池化方式或池化层必须显式写出，
+    否则摘要不变会导致新旧缓存混用。
+    """
     if window_size < patch_len or (window_size - patch_len) % patch_stride != 0:
         raise ValueError("window_size、patch_len、patch_stride 不能完整生成 patch")
+    if not pooling:
+        raise ValueError("pooling 不能为空")
+    if pooling_layer < 0:
+        raise ValueError("pooling_layer 不能为负数")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "dataset": "CWRU",
         "sensors": ["DE", "FE"],
         "window_size": window_size,
@@ -99,6 +118,8 @@ def build_v4_de_fe_cache_spec(
         "embedding_dim": 768,
         "gpt_model": model_name,
         "sampling_rate": sampling_rate,
-        "prompt_template_version": "v6_local_global_mechanism_v1",
+        "prompt_template_version": "v7_mechanism_first_evidence_v1",
         "include_load_hp": include_load_hp,
+        "pooling": pooling,
+        "pooling_layer": pooling_layer,
     }
