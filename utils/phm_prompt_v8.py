@@ -6,6 +6,7 @@ import hashlib
 import json
 
 import torch
+from transformers import GPT2TokenizerFast
 
 from utils.phm_prompt import PHMPromptEmbedder
 
@@ -38,6 +39,29 @@ def prototype_text_sha256() -> str:
 
 class V8PromptEmbedder(PHMPromptEmbedder):
     """复用 V7 的无标签物理统计提取，只替换 V8 的文本职责和池化入口。"""
+
+    def __init__(
+        self,
+        model_name: str = "gpt2",
+        device: torch.device | str = "cpu",
+        sampling_rate: int = 12000,
+        pooling_layer: int = V8_POOLING_LAYER,
+    ):
+        """加载 GPT-2 与支持字符 offset 的快速分词器。
+
+        V8 需要从 ``Diagnostic evidence`` 起始字符定位到对应 token，慢速
+        ``GPT2Tokenizer`` 不支持 ``return_offsets_mapping``。已核验 V8 原型和
+        Evidence 模板在快、慢分词器下的 token id 完全一致，因此替换不会改变
+        文本 token 序列，只是提供证据 span 所需的 offset。
+        """
+        super().__init__(
+            model_name=model_name,
+            device=device,
+            sampling_rate=sampling_rate,
+            pooling_layer=pooling_layer,
+        )
+        self.tokenizer = GPT2TokenizerFast.from_pretrained(model_name)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def _build_evidence_prompt(
         self,
